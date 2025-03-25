@@ -1,8 +1,11 @@
 import React, { useEffect, useState } from "react";
+import { ethers, parseUnits } from "ethers";
+import sdk from "../../src/config/metakeep";
+
 
 declare global {
   interface Window {
-    MetaKeep?: any;
+    ethereum?: any;
   }
 }
 
@@ -13,7 +16,6 @@ const UserView: React.FC = () => {
   const [abi, setAbi] = useState<any[]>([]);
   const [selectedFunction, setSelectedFunction] = useState("");
   const [parameters, setParameters] = useState<string[]>([]);
-  const [sdk, setSdk] = useState<any>(null);
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -21,98 +23,119 @@ const UserView: React.FC = () => {
     setChainId(urlParams.get("chainId") || "");
     setRpcUrl(urlParams.get("rpcUrl") || "");
 
+    console.log("Extracted Chain ID:", urlParams.get("chainId"));
+
     try {
       const abiEncoded = urlParams.get("abi") || "";
-      console.log("Raw ABI from URL:", abiEncoded);
-
-      if (!abiEncoded) {
-        console.warn("ABI parameter is missing from URL.");
-        return;
-      }
-
-      let decodedAbiString;
-      try {
-        decodedAbiString = atob(abiEncoded);
-        console.log("Decoded ABI String:", decodedAbiString);
-      } catch (decodeError) {
-        console.error("Error decoding ABI:", decodeError);
-        return;
-      }
-
-      let parsedAbi;
-      try {
-        parsedAbi = JSON.parse(decodedAbiString);
-        console.log("Parsed ABI:", parsedAbi);
-      } catch (parseError) {
-        console.error("Error parsing ABI:", parseError);
-        return;
-      }
-
-      // Check if ABI is an array or inside an object
-      if (Array.isArray(parsedAbi)) {
-        setAbi(parsedAbi);
-      } else if (parsedAbi.abi && Array.isArray(parsedAbi.abi)) {
-        setAbi(parsedAbi.abi);
-      } else {
-        console.error("Invalid ABI format:", parsedAbi);
+      if (abiEncoded) {
+        const decodedAbi = JSON.parse(atob(abiEncoded));
+        setAbi(Array.isArray(decodedAbi) ? decodedAbi : decodedAbi.abi || []);
       }
     } catch (error) {
-      console.error("Unexpected error handling ABI:", error);
-    }
-
-    if (window.MetaKeep) {
-      const metaKeepInstance = new window.MetaKeep({
-        appId: "9cc98bca-da35-4da8-8f10-655b3e51cb9e",
-      });
-      setSdk(metaKeepInstance);
+      console.error("Error processing ABI:", error);
     }
   }, []);
 
-  const handleTransaction = async () => {
-    if (!sdk) {
-      alert("MetaKeep SDK not initialized.");
-      return;
-    }
-    if (!selectedFunction) {
-      alert("Please select a function to execute.");
-      return;
+  // Helper function to create transaction payload
+  const createTransactionData = async (provider: any, userAddress: string) => {
+    const contract = new ethers.Contract(contractAddress, abi, provider);
+    const contractFunction = contract.interface.getFunction(selectedFunction);
+    if (!contractFunction) {
+      alert("Invalid contract function.");
+      return null;
     }
 
+    const encodedData = contract.interface.encodeFunctionData(selectedFunction, parameters);
+    const nonce = await provider.getTransactionCount(userAddress, "latest");
+    const gasEstimate = await provider.estimateGas({
+      to: contractAddress,
+      data: encodedData,
+      from: userAddress,
+    });
+
+    const txData = {
+      type: 2,
+      from: userAddress,
+      to: contractAddress,
+      value: "0x0",
+      data: encodedData,
+      nonce: ethers.toBeHex(nonce),
+      gas: ethers.toBeHex(gasEstimate),
+      maxFeePerGas: ethers.toBeHex(parseUnits("35", "gwei")),
+      maxPriorityFeePerGas: ethers.toBeHex(parseUnits("30", "gwei")),
+      chainId: ethers.toBeHex(chainId),
+    };
+    
+    
+
+    console.log("Transaction Payload:", JSON.stringify(txData, null, 2));
+    return txData;
+  };
+
+  // Send Transaction With MetaKeep
+  const handleTransactionWithMetaKeep = async () => {
     try {
-      console.log("Executing transaction with params:", {
-        chainId: Number(chainId),
-        rpcUrl,
-        contract: contractAddress,
-        functionName: selectedFunction,
-        args: parameters.map((param) => param.trim()),
-      });
-
-      await sdk.transact({
-        chainId: Number(chainId),
-        rpcUrl,
-        contract: contractAddress,
-        functionName: selectedFunction,
-        args: parameters.map((param) => param.trim()),
-      });
-
-      alert("Transaction submitted successfully!");
-    } catch (error: unknown) {
-      console.error("Transaction failed:", error);
-
-      let errorMessage = "Transaction failed due to an unknown error.";
-      if (error instanceof Error) {
-        errorMessage = error.message;
-      } else if (typeof error === "string") {
-        errorMessage = error;
+      if (!sdk) {
+        alert("MetaKeep SDK not initialized.");
+        return;
+      }
+      if (!selectedFunction) {
+        alert("Please select a function.");
+        return;
       }
 
-      alert(`Transaction failed: ${errorMessage}`);
+      const provider = new ethers.JsonRpcProvider(rpcUrl);
+
+      // Fetch user address directly using getWallet
+      const walletResponse = await sdk.getWallet();
+      console.log("walletResponse", walletResponse)
+      if (walletResponse.status !== "SUCCESS" || !walletResponse.wallet.ethAddress) {
+        alert("Unable to retrieve user wallet.");
+        return;
+      }
+      const userAddress = walletResponse.wallet.ethAddress;
+      console.log("User Address (MetaKeep):", userAddress);
+
+      const txData = await createTransactionData(provider, userAddress);
+      if (!txData) return;
+
+      // Fix nonce format for MetaKeep
+      txData.nonce = ethers.toBeHex(txData.nonce);
+
+      console.log("Transaction With MetaKeep:", JSON.stringify(txData, null, 2));
+
+      // Sign and submit transaction
+      const signedTx = await sdk.signTransaction(txData, "Sign Contract Interaction");
+      console.log("Signed transaction received:", signedTx);
+
+      console.log("Signed Transaction:", signedTx);
+      console.log("Raw Signed Transaction:", signedTx.signedRawTransaction);
+
+      const txResponse = await provider.broadcastTransaction(signedTx.signedRawTransaction);
+      console.log("Transaction sent (With MetaKeep):", txResponse.hash);
+      alert(`Transaction Sent! Tx Hash: ${txResponse.hash}`);
+    } catch (error) {
+      console.error("Transaction failed (With MetaKeep):", error);
+
+      let errorMessage = "An unknown error occurred";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else {
+        try {
+          errorMessage = JSON.stringify(error);
+        } catch {
+          errorMessage = String(error);
+        }
+      }
+
+      alert(`Error: ${errorMessage}`);
     }
   };
 
   return (
     <div className="p-6 bg-white shadow-lg rounded-lg">
       <h2 className="text-xl font-bold mb-4">Execute Transaction</h2>
+
       <select
         className="w-full p-2 border rounded mb-2"
         onChange={(e) => setSelectedFunction(e.target.value)}
@@ -137,10 +160,10 @@ const UserView: React.FC = () => {
       />
 
       <button
-        onClick={handleTransaction}
+        onClick={handleTransactionWithMetaKeep}
         className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
       >
-        Sign & Submit Transaction
+        Send With MetaKeep
       </button>
     </div>
   );

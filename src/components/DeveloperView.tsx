@@ -11,7 +11,22 @@ const DeveloperView: React.FC = () => {
     return btoa(unescape(encodeURIComponent(input)));
   };
 
+  const validateInputs = () => {
+    if (!contractAddress || !chainId || !rpcUrl || !abi) {
+      alert("All fields are required!");
+      return false;
+    }
+    try {
+      JSON.parse(abi);
+    } catch (error) {
+      alert("Invalid ABI JSON format.");
+      return false;
+    }
+    return true;
+  };
+
   const generateTransactionLink = () => {
+    if (!validateInputs()) return;
     const encodedABI = encodeBase64(abi);
     const link = `${window.location.origin}/user?contract=${contractAddress}&chainId=${chainId}&rpcUrl=${encodeURIComponent(rpcUrl)}&abi=${encodedABI}`;
     setGeneratedLink(link);
@@ -23,61 +38,43 @@ const DeveloperView: React.FC = () => {
         <h2 className="text-3xl font-extrabold text-gray-800 text-center mb-6">
           🚀 Create Shareable Transaction Link
         </h2>
-        
+
         <div className="space-y-4">
           <input
             type="text"
             placeholder="Smart Contract Address"
-            className="w-full p-3 border border-gray-300 rounded-lg focus:ring focus:ring-indigo-300 transition"
+            className="w-full p-3 border rounded-lg"
             value={contractAddress}
             onChange={(e) => setContractAddress(e.target.value)}
           />
-          
           <input
             type="text"
             placeholder="Chain ID"
-            className="w-full p-3 border border-gray-300 rounded-lg focus:ring focus:ring-indigo-300 transition"
+            className="w-full p-3 border rounded-lg"
             value={chainId}
             onChange={(e) => setChainId(e.target.value)}
           />
-          
           <input
             type="text"
             placeholder="RPC URL"
-            className="w-full p-3 border border-gray-300 rounded-lg focus:ring focus:ring-indigo-300 transition"
+            className="w-full p-3 border rounded-lg"
             value={rpcUrl}
             onChange={(e) => setRpcUrl(e.target.value)}
           />
-          
           <textarea
             placeholder="Enter Contract ABI JSON"
-            className="w-full p-3 border border-gray-300 rounded-lg focus:ring focus:ring-indigo-300 transition"
+            className="w-full p-3 border rounded-lg"
             rows={4}
             value={abi}
             onChange={(e) => setAbi(e.target.value)}
           ></textarea>
         </div>
-        
-        <button
-          onClick={generateTransactionLink}
-          className="w-full mt-6 bg-indigo-500 text-white font-semibold py-3 rounded-lg shadow-lg hover:bg-indigo-600 transition"
-        >
+
+        <button onClick={generateTransactionLink} className="w-full mt-6 bg-indigo-500 text-white py-3 rounded-lg">
           Generate Link
         </button>
 
-        {generatedLink && (
-          <div className="mt-6 bg-gray-100 p-4 rounded-lg shadow-inner">
-            <p className="text-gray-800 font-medium mb-2">Share this link:</p>
-            <a
-              href={generatedLink}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-indigo-600 break-all hover:underline"
-            >
-              {generatedLink}
-            </a>
-          </div>
-        )}
+        {generatedLink && <p className="mt-4 text-center">{generatedLink}</p>}
       </div>
     </div>
   );
