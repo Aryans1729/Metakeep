@@ -1,1 +1,10 @@
-node_modules/
+# Dependencies
+node_modules
+.pnp
+.pnp.js
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
