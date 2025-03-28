@@ -101,10 +101,7 @@ const Home: React.FC = () => {
         </style>
       </div>
 
-      {/* Footer with smooth opacity effect */}
-      <footer className="mt-10 text-gray-300 text-sm opacity-90 hover:opacity-100 transition-opacity duration-300">
-        Empowered by <span className="font-semibold">MetaKeep</span>. Built for simplicity and style.
-      </footer>
+     
     </div>
   );
 };
